@@ -1,10 +1,11 @@
 import sys
+import os
+import joblib
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QLineEdit, QPushButton, QMessageBox
 from PyQt5.QtCore import Qt
+import pandas as pd
 
-# Для импорта load_model, prepare_data, predict, calculate_probability, column_names из вашего модуля
-# Обновите путь импорта в соответствии с вашей структурой проекта
-from predict import load_model, prepare_data, predict, calculate_probability, column_names
+from predict import load_model, prepare_data, predict
 
 class DragDropBox(QLineEdit):
     def __init__(self, placeholder_text, *args, **kwargs):
@@ -56,7 +57,7 @@ class MainWindow(QWidget):
 
     def initUI(self):
         self.setGeometry(100, 100, 800, 200)
-        self.setWindowTitle('Предсказание данных с Drag and Drop')
+        self.setWindowTitle('radionet_joblib')
         self.setStyleSheet("""
             QWidget {
                 background-color: #222222;
@@ -75,7 +76,7 @@ class MainWindow(QWidget):
 
         layout = QVBoxLayout()
 
-        self.logPathEdit = DragDropBox("Перетащите сюда файл log")
+        self.logPathEdit = DragDropBox("Перетащите сюда файл Excel")
         self.modelPathEdit = DragDropBox("Перетащите сюда файл модели .joblib")
         self.predictButton = QPushButton("Старт")
         self.predictButton.clicked.connect(self.performPrediction)
@@ -91,16 +92,26 @@ class MainWindow(QWidget):
         model_path = self.modelPathEdit.text()
         if log_path and model_path:
             model = load_model(model_path)
-            data = prepare_data(log_path, column_names)
-            predictions = predict(model, data)
-            result = calculate_probability(predictions)
+
+            # Загрузка списка признаков
+            feature_names = joblib.load('feature_names.joblib')
+
+            # Подготавливаем данные для предсказания, передавая feature_names как аргумент
+            processed_data, original_data = prepare_data(log_path, feature_names)
+
+            # Выполнение предсказания
+            predicted_data = predict(model, processed_data, original_data)
+            # Сохраняем результаты в новый файл Excel
+            new_filename = self.create_new_filename(log_path)
+            predicted_data.to_excel(new_filename, index=False)
+
+            # Сообщение для пользователя
+            result = "Обработка завершена, файл сохранен как: " + new_filename
 
             # Создание кастомного QMessageBox
             msgBox = QMessageBox()
             msgBox.setWindowTitle("Результат")
             msgBox.setText(result)
-
-            # Применение кастомного стиля для изменения цвета текста и фона
             msgBox.setStyleSheet("""
             QMessageBox {
                 color: #ffffff; /* Белый текст */
@@ -121,8 +132,13 @@ class MainWindow(QWidget):
             QMessageBox QPushButton:hover {
                 border-color: #aaaaaa; /* Цвет границы кнопки при наведении */
             }
-        """)
+            """)
             msgBox.exec_()
+
+    def create_new_filename(self, original_filepath):
+        path, ext = os.path.splitext(original_filepath)
+        new_filename = f"{path}_predicted{ext}"
+        return new_filename
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
